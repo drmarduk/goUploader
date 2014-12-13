@@ -1,13 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"log"
 	"net/http"
-	"net/textproto"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -36,29 +37,33 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err.Error())
 		return
 	}
-	defer file.Close()
-
 	// check if filetype is allowed
-	if !CheckMimeType(header.Header) {
-		log.Println("File type not allowed.")
+	err = CheckMIME(file)
+	if err != nil {
+		log.Println(err.Error())
 		return
 	}
-
-	filename, err := SaveFile(file, strings.Split(header.Filename, ".")[1])
+	//hackish workaround, CheckMIME already reads some byte,
+	//so the file is not complete when written.
+	file.Close()
+	file, header, _ = r.FormFile("file")
+	defer file.Close()
+	//TODO: dont parse fileextension without verifying
+	filename, err := SaveFile(file, filepath.Ext(header.Filename))
 
 	fmt.Fprintf(w, "<a href='/img/"+filename+"'>"+filename+"</a>")
 }
 
-func CheckMimeType(header textproto.MIMEHeader) bool {
-	mime := header["Content-Type"][0]
-	allowed := [...]string{"image/jpg", "image/jpeg", "image/png", "image/webm", "image/gif"}
-
-	for _, k := range allowed {
-		if mime == k {
-			return true
-		}
+func CheckMIME(file io.Reader) error {
+	b := make([]byte, 512)
+	if _, err := file.Read(b); err != nil {
+		return err
 	}
-	return false
+	mime := http.DetectContentType(b)
+	if !strings.HasPrefix(mime, "video") && !strings.HasPrefix(mime, "image") {
+		return (errors.New("filetype " + mime + " not allowed"))
+	}
+	return nil
 }
 
 func SaveFile(src io.Reader, extension string) (string, error) {
@@ -76,7 +81,7 @@ func SaveFile(src io.Reader, extension string) (string, error) {
 		log.Println(err.Error())
 		return "", err
 	}
-	filename := strconv.Itoa(int(h.Sum32())) + "." + extension
+	filename := strconv.Itoa(int(h.Sum32())) + extension
 	err = os.Link("tmpfile", "html/img/"+filename)
 	if err != nil {
 		log.Println(err.Error())
