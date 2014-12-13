@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
+	"hash/crc32"
 	"io"
 	"log"
 	"net/http"
 	"net/textproto"
 	"os"
+	"strconv"
+	"strings"
 )
 
 func main() {
@@ -35,29 +38,49 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	out, err := os.Create("html/img/" + header.Filename)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, file)
-	if err != nil {
-		log.Println(err.Error())
+	// check if filetype is allowed
+	if !CheckMimeType(header.Header) {
+		log.Println("File type not allowed.")
 		return
 	}
 
-	fmt.Fprintf(w, "File uploaded")
+	filename, err := SaveFile(file, strings.Split(header.Filename, ".")[1])
+
+	fmt.Fprintf(w, "<a href='/img/"+filename+"'>"+filename+"</a>")
 }
 
 func CheckMimeType(header textproto.MIMEHeader) bool {
-	for k, v := range header {
-		log.Println(k + " - " + v)
+	mime := header["Content-Type"][0]
+	allowed := [...]string{"image/jpg", "image/jpeg", "image/png", "image/webm", "image/gif"}
+
+	for _, k := range allowed {
+		if mime == k {
+			return true
+		}
 	}
 	return false
 }
 
-func GenerateFileName() string {
+func SaveFile(src io.Reader, extension string) (string, error) {
 
+	h := crc32.NewIEEE()
+	dest, err := os.Create("tmpfile")
+	if err != nil {
+		log.Println(err.Error())
+		return "", err
+	}
+	defer dest.Close()
+	t := io.TeeReader(src, h)
+	_, err = io.Copy(dest, t)
+	if err != nil {
+		log.Println(err.Error())
+		return "", err
+	}
+	filename := strconv.Itoa(int(h.Sum32())) + "." + extension
+	err = os.Link("tmpfile", "html/img/"+filename)
+	if err != nil {
+		log.Println(err.Error())
+		return "", err
+	}
+	return filename, nil
 }
