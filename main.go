@@ -32,6 +32,10 @@ func main() {
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Redirect(w, r, "/", 300)
+	}
+
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		log.Println(err.Error())
