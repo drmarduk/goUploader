@@ -28,7 +28,7 @@ func main() {
 	fs := http.FileServer(http.Dir("html"))
 	http.Handle("/", fs)
 	http.HandleFunc("/upload", uploadHandler)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":80", nil))
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
